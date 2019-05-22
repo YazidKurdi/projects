@@ -1,0 +1,160 @@
+#
+# This is a Shiny web application. You can run the application by clicking
+# the 'Run App' button above.
+#
+# Find out more about building applications with Shiny here:
+#
+#    http://shiny.rstudio.com/
+#
+
+library(shiny)
+library(tidyverse)
+library(lubridate)
+library(plotly)
+library(DT)
+library(rworldmap)
+library(ggthemes)
+library(rgdal)
+
+
+map_world <- broom::tidy(spTransform(getMap(), CRS("+proj=robin"))) %>% 
+  filter(id != "Antarctica",long > -12922086)
+
+longlat <- map_world%>%
+  select(long,lat,Destination = id,group)
+
+passport <- read_csv("https://raw.githubusercontent.com/ilyankou/passport-index-dataset/master/passport-index-tidy.csv")%>%
+  left_join(longlat)%>%
+  mutate(Destination = fct_recode(Destination,
+                                  "United States of America" = "United States",
+                                  "Democratic Republic of the Congo" = "DR Congo",
+                                  "The Bahamas" = "Bahamas",
+                                  "Guinea Bissau" = "Guinea-Bissau",
+                                  "Hong Kong S.A.R." = "Hong Kong",
+                                  "Macau S.A.R" = "Macao",
+                                  "Federated States of Micronesia" = "Micronesia",
+                                  "Macedonia" = "North Macedonia",
+                                  "Russia" = "Russian Federation",
+                                  "Republic of Serbia" = "Serbia",
+                                  "United Republic of Tanzania" = "Tanzania",
+                                  "East Timor" = "Timor-Leste",
+                                  "Vietnam" = "Viet Nam",
+                                  "Republic of the Congo" = "Congo"),
+         Passport = fct_recode(Passport,
+                                  "United States of America" = "United States",
+                                  "Democratic Republic of the Congo" = "DR Congo",
+                                  "The Bahamas" = "Bahamas",
+                                  "Guinea Bissau" = "Guinea-Bissau",
+                                  "Hong Kong S.A.R." = "Hong Kong",
+                                  "Macau S.A.R" = "Macao",
+                                  "Federated States of Micronesia" = "Micronesia",
+                                  "Macedonia" = "North Macedonia",
+                                  "Russia" = "Russian Federation",
+                                  "Republic of Serbia" = "Serbia",
+                                  "United Republic of Tanzania" = "Tanzania",
+                                  "East Timor" = "Timor-Leste",
+                                  "Vietnam" = "Viet Nam",
+                                  "Republic of the Congo" = "Congo"),
+         Value = as.factor(Value),
+         Value = fct_recode(Value,
+                            "Chosen country" = "-1",
+                            "Visa required" = "0",
+                            "On arrival visa" = "1",
+                            "eTA required" = "2",
+                            "Visa-free travel" = "3"),
+         id = Destination)
+
+
+
+
+# Define UI for application that draws a histogram
+ui <- fluidPage(
+  
+  # Application title
+  titlePanel("Visa requirements"),
+  
+  # Sidebar with a slider input for number of bins 
+  sidebarLayout(
+    sidebarPanel(width = 2,
+      selectizeInput("country",
+                  "Select country:",
+                  choices = distinct(passport,Destination)[[1,]])
+      
+
+    ),
+ 
+    # Show a plot of the generated distribution
+    mainPanel(width = 8,
+      plotOutput("plot")
+
+    )
+  )
+)
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  
+  
+  output$plot <- renderPlot({
+    req(input$country)
+    map_world%>%
+      ggplot(aes(x=long, y=lat,group = group,text = id)) +
+      geom_polygon(colour='black',fill = "#CC9966")+
+      geom_polygon(data = same_country(),aes(x=long, y=lat,group = group, fill=Value), colour='black')+
+      geom_polygon(data = visa_required_country(),aes(x=long, y=lat,group = group, fill = Value), colour='black')+
+      geom_polygon(data = visa_obtained_country(),aes(x=long, y=lat,group = group, fill= Value), colour='black')+
+      geom_polygon(data = visa_ETA_country(),aes(x=long, y=lat,group = group, fill=Value), colour='black')+
+      geom_polygon(data = visa_free_country(),aes(x=long, y=lat,group = group,fill= Value), colour='black')+
+      theme_void()+
+      labs(title = "Visa privileges per country",
+           subtitle = "Where can you go?",
+           caption = "Source: PASSPORT INDEX",
+           fill = "")+
+      scale_fill_manual(values = c("#A53717","#00FFCC","#3399FF","#339933","#CC9966"))+
+      theme(plot.title = element_text(hjust = 0.5, size = 18),
+            plot.caption = element_text(size = 12),
+            plot.subtitle = element_text(hjust = 0.5, size = 14),
+            legend.title = element_text(size = 15, face = "bold"),
+            legend.text = element_text(size = 13),
+            legend.position = "bottom")
+      
+    
+    
+  })
+  
+  filtered_passports <-reactive({
+    
+  passport %>%
+    filter(Passport == input$country)
+
+  })
+  
+  same_country <- reactive({
+    
+  filtered_passports()%>%
+    filter(Value == "Chosen country")
+  })
+  
+  visa_required_country <- reactive({
+    
+ filtered_passports()%>%
+    filter(Value == "Visa required")
+    
+  })
+  
+  visa_obtained_country <- reactive({filtered_passports()%>%
+    filter(Value == "On arrival visa")
+  })
+  
+  visa_ETA_country <- reactive({filtered_passports()%>%
+    filter(Value == "eTA required")
+})
+  visa_free_country <- reactive({filtered_passports()%>%
+    filter(Value == "Visa-free travel")
+  })
+  
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)
+
