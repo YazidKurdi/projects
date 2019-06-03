@@ -1,0 +1,231 @@
+---
+title: '''#tidyteusday'' Analysis'
+fontsize: 9pt
+output:
+  
+  html_document: default
+  pdf_document:
+   latex_engine: xelatex
+editor_options:
+  
+  chunk_output_type: console
+---
+<br>
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(out.height = "\\textheight",  out.width = "\\textwidth",fig.width=9, fig.height=5)
+#knitr::opts_chunk$set(echo = TRUE)
+```
+```{r include = FALSE}
+library(tidyverse)
+library(lubridate)
+library(chron)
+library(tidytext)
+tidy_raw <- read_rds(url("https://github.com/rfordatascience/tidytuesday/blob/master/data/2019/2019-01-01/tidytuesday_tweets.rds?raw=true"))
+
+tidy_processed <- tidy_raw%>%
+  select(-contains("quoted"),-contains("coords"))%>% 
+  separate(created_at,into = c("date","time") , " ")%>%
+  mutate(date = as.Date(date),
+         time = times(time))
+
+custom_stop_words <-tribble(
+  ~word,~lexicon,
+  "#tidytuesday","CUSTOM",
+  "16","CUSTOM",
+  "36","CUSTOM"
+)
+
+
+stop_words2 <- stop_words%>%
+  bind_rows(custom_stop_words)
+
+tidy_text <- tidy_processed%>%
+  unnest_tokens(word,text,token = "tweets")%>%
+  anti_join(stop_words2,by = "word")
+
+```
+
+#The data was collected from github's[#Rstats & #TidyTuesday Tweets](https://github.com/rfordatascience/tidytuesday/tree/master/data/2019/2019-01-01).
+
+##Tidytuesday is a weekly data project in R from the R4Ds community, which contains a different dataset each week, today's data is from April-December 2018, for every tweet that had a "tidytuesday" hashtag.
+<br>
+
+###Quantitative analysis of tweets
+
+
+General trend of "tidyteusday" hashtag, a sharp dip in late july might be caused to summer break, increasing to normal counts until end of year break.
+
+&nbsp; 
+
+```{r echo = FALSE}
+
+tidy_processed%>%
+  count(date = floor_date(date,"week"),sort = TRUE)%>%
+  ggplot(aes(date,n))+
+  geom_line()+
+  scale_x_date(date_labels = "%b",date_breaks  ="1 month")+
+  labs(x = "Date",y = "# of tweets",
+       title = '"#tidyteusday" trend overtime')
+
+```
+&nbsp;
+
+&nbsp; 
+
+&nbsp; 
+
+&nbsp; 
+
+&nbsp; 
+
+&nbsp; 
+
+&nbsp; 
+
+&nbsp; 
+
+&nbsp; 
+
+Most #tidytuesday are coming from "Twitter Web Client", which is normal since most analysis is done on Desktop and laptops.
+
+```{r echo = FALSE}
+##what day and what time most of the tweets are coming from?
+tidy_processed%>%
+  count(date = floor_date(date,"week"),sort = TRUE, source = fct_lump(source,3))%>%
+  ggplot(aes(date,n,col = source))+
+  geom_line()+
+  scale_x_date(date_labels = "%b",date_breaks  ="1 month")+
+  labs(x = "",y = "# of tweets", col = "Source",
+       title = 'Where are the most "tidyteusday" hashtags coming from?')
+```
+
+Tidytuesday datasets are submitted on a Monday which explains the gradual increase in tweets to peak on Tuesday and decrease slowly over the weekend.
+
+
+```{r echo = FALSE}
+tidy_processed%>%
+  count(date = wday(date,label = TRUE),sort = TRUE)%>%
+  ggplot(aes(date,n))+
+  geom_line(aes(group = 1))+
+  geom_point()+
+  labs(x = "",y = "# of tweets",
+       title = 'Guess which day where the hashtag "tidyteusday" peaks?')
+```
+&nbsp; 
+
+&nbsp; 
+
+&nbsp; 
+
+Who are the most influential people on the "tidytuesday" hashtag?
+
+**David Robinson** looks like a clear winner, which I am assuming is attributed to his successful screen-cast of tidytuesday and broadcasting it on twitter.
+
+
+```{r echo = FALSE}
+##Most popular people that tweet #TidyTeusday 
+
+tidy_most_popular <- tidy_processed%>%
+  group_by(name)%>%
+  summarize(AverageFavorite = mean(favorite_count),
+            AverageRetweet = mean(retweet_count),
+            n = n())%>%
+    filter(n > 10)%>%
+  arrange(desc(AverageFavorite,AverageRetweet,AverageReply))%>%
+  head(9)
+
+tidy_most_popular%>%
+  gather(Average,Value, -name,-n)%>%
+  ggplot(aes(reorder(name,Value),Value,fill = Average))+
+  geom_col(position = "dodge")+
+  coord_flip()+
+  labs(y= "# of tweets",x ="",fill = "",title = "Most popular people with more than 10 tweets with the tidytuesday hashtag",subtitle =" based on average favorites and retweets")
+
+```
+
+A majority shows an increase in contribution at the start of the year and a decrease at the end of it, this could be contributed to end of year break, or more busy schedules for more successful influencers(A wider data range could answer this problem)
+
+```{r echo = FALSE}
+##contribution of most popular users overtime
+popular <- pull(tidy_most_popular[,1])
+
+tidy_processed%>%
+  filter(name %in% popular)%>%
+  group_by(name,date = floor_date(date,"month"))%>%
+  summarize(AverageFavorite = mean(favorite_count),
+            AverageRetweet = mean(retweet_count),
+            n = n())%>%
+  ggplot(aes(date,n))+
+  geom_line()+
+  scale_x_date(date_labels = "%b",date_breaks  ="1 month")+
+  facet_wrap(~reorder(name,-AverageFavorite))+
+  labs(y= "# of tweets",x ="",title = "Contribution of most influential people overtime")
+```
+&nbsp; 
+
+&nbsp; 
+
+###Text analysis of tweets
+Word cloud of most frequently used words in "#tidytuesday" tweets, to no surprise #rstats,data,week and #r4ds are the most accompanied words to #tidytuesday
+
+```{r echo = FALSE ,warning= FALSE, message= FALSE}
+library(wordcloud)
+word_cloud <- tidy_text %>%
+  count(word,sort = TRUE)
+
+wordcloud(word = word_cloud$word,freq = word_cloud$n, max.words = 20, colors = "blue")
+```
+<br>
+Most popular words used along side the hashtag "tidytuesday" based on average favorite and retweets.
+<br><br><br><br>
+```{r echo = FALSE}
+##What are the most popular words assosciated with tidyteusday
+
+
+tidy_text %>%
+  group_by(word)%>%
+  summarize(n = n(),
+            AverageFavorite = mean(favorite_count),
+            AverageRetweet = mean(retweet_count))%>%
+  filter(n > 50)%>%
+  arrange(desc(AverageFavorite))%>%
+  head(20)%>%
+  gather(Average,Value, -word,-n)%>%
+  ggplot(aes(reorder(word,Value),Value,fill = Average))+
+  geom_col()+
+  coord_flip()+
+  labs(x= "",y = "# of appearence",fill = "",
+       title = 'What are the most popular words associated with "tidyteusday"?')
+```
+&nbsp; 
+
+&nbsp; 
+
+&nbsp; 
+
+Finally, we explore the flavor of the month, which topics topped the charts?
+
+Looks like [US Voter Turnout](https://github.com/rfordatascience/tidytuesday/blob/master/data/2018/2018-10-09), took first place with 28 occurences of the word, which is the same number of posted datasets in 2018, what are the chances!
+
+
+```{r echo = FALSE, warning = FALSE}
+##trend of words on date
+library(ggrepel)
+
+
+tidy_text%>%
+  mutate(date = floor_date(date,"month"))%>%
+  count(word,date)%>%
+  bind_tf_idf(word,date,n)%>%
+  group_by(date)%>%
+  top_n(2, tf_idf)%>%
+  arrange(desc(tf_idf))%>%
+  ggplot(aes(date,n, fill = word))+
+  geom_col(position = "dodge",show.legend = FALSE)+
+  geom_text_repel(aes(label = word),hjust = .4, vjust =-2)+
+  scale_x_date(date_labels = "%b",date_breaks  ="1 month")+
+  labs(x= "", y = "# of occurence", title = 'Flavor of the month for "tidyteusday"')
+ 
+```
+
+
